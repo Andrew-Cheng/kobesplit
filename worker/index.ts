@@ -1,3 +1,5 @@
+import { authenticatedUser, AuthError } from './auth';
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
@@ -7,6 +9,16 @@ export default {
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
       };
+      if (pathname === '/api/me') {
+        if (request.method !== 'GET') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { ...headers, Allow: 'GET' } });
+        try {
+          return Response.json({ user: await authenticatedUser(request, env) }, { headers });
+        } catch (error) {
+          if (error instanceof AuthError) return Response.json({ error: error.message }, { status: error.status, headers });
+          console.error({ event: 'authentication_failed', route: '/api/me' });
+          return Response.json({ error: 'Unable to load your account. Please try again.' }, { status: 503, headers });
+        }
+      }
       if (pathname !== '/api/health') {
         return Response.json({ error: 'Not found' }, { status: 404, headers });
       }
@@ -29,7 +41,7 @@ export default {
       const response = new Response(asset.body, asset);
       response.headers.set('Referrer-Policy', 'no-referrer');
       response.headers.set('X-Content-Type-Options', 'nosniff');
-      if (/^\/(s|invite)\//.test(pathname)) {
+      if (/^\/(s|invite)\//.test(pathname) || pathname === '/dashboard') {
         response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
         response.headers.set('Cache-Control', 'no-store');
       }

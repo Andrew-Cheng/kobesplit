@@ -13,7 +13,8 @@
     "run_worker_first": [
       "/api/*",
       "/s/*",
-      "/invite/*"
+      "/invite/*",
+      "/dashboard"
     ]
   },
   "d1_databases": [
@@ -25,7 +26,10 @@
     }
   ],
   "secrets": {
-    "required": []
+    "required": [
+      "CLERK_SECRET_KEY",
+      "CLERK_PUBLISHABLE_KEY"
+    ]
   },
   "observability": {
     "enabled": true,
