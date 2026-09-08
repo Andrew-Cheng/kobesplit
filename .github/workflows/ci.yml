@@ -1,4 +1,6 @@
 name: CI
+permissions:
+  contents: read
 on:
   pull_request:
   push:
@@ -13,5 +15,6 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run types:check
       - run: npm test
       - run: npm run build
