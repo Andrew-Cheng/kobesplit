@@ -1,3 +1,4 @@
+import { groupsApi } from './groups';
 import { authenticatedUser, AuthError } from './auth';
 
 export default {
@@ -9,6 +10,16 @@ export default {
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
       };
+      if (/^\/api\/(groups(?:\/|$)|invitations\/)/.test(pathname)) {
+        try {
+          const result = await groupsApi(request, env);
+          if (result) { for (const [key,value] of Object.entries(headers)) result.headers.set(key,value); return result; }
+        } catch (error) {
+          if (error instanceof AuthError) return Response.json({error:error.message},{status:error.status,headers});
+          console.error({event:'group_request_failed'});
+          return Response.json({error:'Unable to complete the request. Please try again.'},{status:503,headers});
+        }
+      }
       if (pathname === '/api/me') {
         if (request.method !== 'GET') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { ...headers, Allow: 'GET' } });
         try {
