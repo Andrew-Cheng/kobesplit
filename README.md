@@ -71,3 +71,13 @@ Planned PRs: foundation; authentication; groups and invitations; expenses and pa
 ## Dependency note
 
 `sharp` is overridden to a patched release to address a transitive security advisory in the local Cloudflare tooling. Revisit the override when Miniflare updates its dependency.
+
+## Groups and invitations
+
+Apply `npm run db:migrate` before local development to create the group and invitation tables. Open `/dashboard` after signing in to create a group, then share its permanent `/s/<group-id>` link. Public pages expose member display names and group details, including to signed-out visitors. They do not expose account IDs from Clerk, email addresses, or invitation credentials.
+
+The creator can open **Manage invitations**, enter a recipient’s email, and copy the generated link to share themselves. Invitations expire after seven days and require explicit acceptance by an account with that verified email. Creating another invitation for the same email replaces its previous pending invitation. Revoke or replace invitation links without changing the public ledger link.
+
+Invitation links are displayed only once; the database stores a SHA-256 hash. Retrying a successful submission returns the existing invitation ID without making a duplicate. If the first response was lost, the interface explains how to create a replacement and get a usable link. No raw invitation token is persisted in audit or retry records. Writes require an idempotency key (acceptance is inherently one-time), have a per-account limit of 30 per minute, and use D1 transactions with in-transaction permission guards.
+
+This feature adds group membership and an empty public ledger. Expenses, repayments, nonzero balances, group renaming/archiving controls, and member removal controls follow in their own PRs. Schema fields and backend guards already enforce read-only archived groups and removed membership if those states exist.

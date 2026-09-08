@@ -73,3 +73,8 @@ describe('sign-in return destination', () => {
   it.each(['/s/group-id', '/invite/one_time_token', '/invite/token/'])('preserves %s', path => expect(signInDestination(path)).toBe(path));
   it.each(['/', '/dashboard', '//attacker.test', '/\\attacker.test', 'https://attacker.test', '/?redirect_url=https://attacker.test'])('uses dashboard for %s', path => expect(signInDestination(path)).toBe('/dashboard'));
 });
+
+// Group settings preserve their destination through the same sign-in flow.
+it('returns to group settings after sign-in', () => {
+  expect(signInDestination('/s/random-group/settings')).toBe('/s/random-group/settings');
+});
