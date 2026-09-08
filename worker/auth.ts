@@ -5,9 +5,14 @@ export class AuthError extends Error {
 }
 
 export type AppUser = { id: string; display_name: string };
+export type Identity = { user: AppUser; verifiedEmails: string[] };
+
+export async function authenticatedUser(request: Request, env: Env): Promise<AppUser> {
+  return (await authenticatedIdentity(request, env)).user;
+}
 
 // All protected routes must authenticate before reading user or group data.
-export async function authenticatedUser(request: Request, env: Env): Promise<AppUser> {
+export async function authenticatedIdentity(request: Request, env: Env): Promise<Identity> {
   const origin = new URL(request.url).origin;
   if (request.headers.get('Origin') && request.headers.get('Origin') !== origin) {
     throw new AuthError(403, 'Request origin is not allowed.');
@@ -34,7 +39,9 @@ export async function authenticatedUser(request: Request, env: Env): Promise<App
 
   // Fetch from Clerk, never trust a user ID, email, or name supplied by the browser.
   const profile = await clerk.users.getUser(auth.userId);
-  if (!profile.emailAddresses.some(email => email.verification?.status === 'verified')) {
+  if (profile.banned || profile.locked) throw new AuthError(403, 'This account is unavailable.');
+  const verifiedEmails = profile.emailAddresses.filter(email => email.verification?.status === 'verified').map(email => email.emailAddress.toLowerCase());
+  if (!verifiedEmails.length) {
     throw new AuthError(403, 'Verify your email address to continue.');
   }
   // Email addresses are deliberately not used as public display-name fallbacks.
@@ -45,5 +52,5 @@ export async function authenticatedUser(request: Request, env: Env): Promise<App
     RETURNING id, display_name
   `).bind(crypto.randomUUID(), auth.userId, displayName).first<AppUser>();
   if (!user) throw new Error('User mapping failed');
-  return user;
+  return { user, verifiedEmails };
 }
