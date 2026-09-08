@@ -77,6 +77,15 @@ describe('groups and invitations with real D1 transactions',()=>{
     await call(`/groups/${id}/invites/${second.id}/revoke`,{});
     await expect(call(`/invitations/${second.link.split('/').pop()}`,{})).rejects.toMatchObject({status:410});
   });
+  it('simultaneous revoke retries succeed with one audit event',async()=>{
+    const id=await create();const invitation=await invite(id);const key=crypto.randomUUID();
+    const results=await Promise.all([call(`/groups/${id}/invites/${invitation.id}/revoke`,{},key),call(`/groups/${id}/invites/${invitation.id}/revoke`,{},key)]);
+    for(const response of results) expect(response!.status).toBe(200);
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM audit_events WHERE entity_id=? AND kind='invite.revoked'").bind(invitation.id).first('n')).toBe(1);
+  });
+  it('rejects authenticated writes sent by a different HTTP origin',async()=>{
+    await expect(groupsApi(new Request('https://example.com/api/groups',{method:'POST',headers:{Authorization:`Bearer ${token}`,Origin:'https://attacker.test','Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({name:'Attack',currency:'USD'})}),env)).rejects.toMatchObject({status:403});
+  });
   it('rejects expired invitations and archived group mutations',async()=>{
     const id=await create();const first=await invite(id);
     await env.DB.prepare('UPDATE invites SET expires_at=0 WHERE id=?').bind(first.id).run();

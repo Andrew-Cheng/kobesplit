@@ -116,7 +116,13 @@ export async function groupsApi(request: Request, env: Env): Promise<Response | 
     if (inviteId) {
       const existing = await db.prepare('SELECT id FROM invites WHERE id=? AND group_id=?').bind(inviteId,id).first();
       if (!existing) throw new AuthError(404,'Invitation not found.');
-      await db.batch([check,write.save(inviteId),db.prepare('UPDATE invites SET revoked=1 WHERE id=? AND group_id=?').bind(inviteId,id),audit(db,id,user.id,'invite.revoked',inviteId,{}),clean]);
+      try {
+        await db.batch([check,write.save(inviteId),db.prepare('UPDATE invites SET revoked=1 WHERE id=? AND group_id=?').bind(inviteId,id),audit(db,id,user.id,'invite.revoked',inviteId,{}),clean]);
+      } catch {
+        const retry = await writeContext(request,db,user.id,value);
+        if (retry.previous) return Response.json({id:retry.previous.resource_id,replayed:true});
+        throw new AuthError(409,'The group changed. Reload before trying again.');
+      }
       return Response.json({id:inviteId});
     }
     const token = crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-','');
