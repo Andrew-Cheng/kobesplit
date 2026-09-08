@@ -22,7 +22,7 @@ This foundation includes the mobile-first landing page, Workers API routing, loc
 
 ## Credentials
 
-Authentication will use `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` and `CLERK_SECRET_KEY` in `.dev.vars`. Examples are provided; real files are ignored by Git. Only the publishable key may appear in frontend code.
+Authentication will use `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` and `CLERK_SECRET_KEY` in `.dev.vars`. Create these files locally; all `.env*` and `.dev.vars*` files are ignored by Git. Only the publishable key may appear in frontend code.
 
 ## Deployment (not configured yet)
 
