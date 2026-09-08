@@ -1,5 +1,5 @@
 import { useAuth } from '@clerk/react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { SignIn } from './session';
 
 type Group = {id:string;name:string;currency:string;creator_id:string;archived:number};
@@ -16,13 +16,16 @@ function useApi() {
   };
 }
 function CopyLink({value,label='Copy link'}:{value:string;label?:string}) {
+  const currentValue=useRef(value); currentValue.current=value;
   const [copied,setCopied] = useState(false);
   const [failed,setFailed] = useState(false);
-  return <><button type="button" className="button button-small" onClick={async()=>{try{await navigator.clipboard.writeText(value);setCopied(true);}catch{setFailed(true);}}}>{copied?'Copied!':label}</button>{failed && <input aria-label="Link to copy" value={value} readOnly onFocus={e=>e.target.select()}/>}</>;
+  useEffect(()=>{setCopied(false);setFailed(false);},[value]);
+  return <><button type="button" className="button button-small" onClick={async()=>{try{await navigator.clipboard.writeText(value);if(currentValue.current===value)setCopied(true);}catch{if(currentValue.current===value)setFailed(true);}}}>{copied?'Copied!':label}</button>{failed && <input aria-label="Link to copy" value={value} readOnly onFocus={e=>e.target.select()}/>}</>;
 }
 export function GroupsDashboard() {
   const {isLoaded,isSignedIn,userId} = useAuth();
   const api = useApi();
+  const currentUser = useRef(userId); currentUser.current = userId;
   const [groups,setGroups] = useState<Group[]>();
   const [owner,setOwner] = useState<string|null|undefined>();
   const [error,setError] = useState('');
@@ -31,11 +34,11 @@ export function GroupsDashboard() {
   const [name,setName] = useState('');
   const [currency,setCurrency] = useState('USD');
   const [key,setKey] = useState(()=>crypto.randomUUID());
-  useEffect(()=>{let active=true;if(isSignedIn){setGroups(undefined);setError('');setOwner(userId);api('/api/groups').then(d=>{if(active)setGroups(d.groups);}).catch(e=>{if(active)setError(e.message);});}return()=>{active=false;};},[isSignedIn,userId,attempt]);
-  async function create(e:FormEvent){e.preventDefault();setBusy(true);setError('');try{const data=await api('/api/groups',{name,currency},key);window.location.assign(`/s/${data.id}`);}catch(e){setError((e as Error).message);setBusy(false);}}
+  useEffect(()=>{let active=true;if(isSignedIn){setGroups(undefined);setError('');setBusy(false);setOwner(userId);api('/api/groups').then(d=>{if(active)setGroups(d.groups);}).catch(e=>{if(active)setError(e.message);});}return()=>{active=false;};},[isSignedIn,userId,attempt]);
+  async function create(e:FormEvent){e.preventDefault();const account=userId;setBusy(true);setError('');try{const data=await api('/api/groups',{name,currency},key);if(currentUser.current===account)window.location.assign(`/s/${data.id}`);}catch(e){if(currentUser.current===account){setError((e as Error).message);setBusy(false);}}}
   if (!isLoaded) return <p>Loading your groups…</p>;
   if (!isSignedIn) return <section className="dashboard"><h1>Your groups.</h1><p>Sign in to create a group or view your memberships.</p><SignIn/></section>;
-  return <section className="dashboard"><p className="eyebrow">YOUR GROUPS</p><h1>Shared plans.<br/><em>One place.</em></h1>{error && <p role="alert">{error} <button onClick={()=>setAttempt(n=>n+1)}>Retry</button></p>}{owner===userId && groups ? <div className="group-list">{groups.length ? groups.map(g=><a className="group-card" href={`/s/${g.id}`} key={g.id}><h2>{g.name}</h2><p>{g.currency} · Settled up{g.archived?' · Archived':''}</p></a>):<p>No groups yet. Start with a friend, a trip, or your household.</p>}</div>:<p>Loading your groups…</p>}<form className="group-form" onSubmit={create}><h2>Create a group</h2><label>Group name<input required maxLength={100} value={name} onChange={e=>{setName(e.target.value);setKey(crypto.randomUUID());}} placeholder="Weekend in New York"/></label><label>Currency<select value={currency} onChange={e=>{setCurrency(e.target.value);setKey(crypto.randomUUID());}}>{currencies.map(c=><option key={c}>{c}</option>)}</select></label><p className="small">One currency for the group. It becomes fixed after the first expense or repayment.</p><button disabled={busy} className="button">{busy?'Creating…':'Create group'}</button></form></section>;
+  return <section className="dashboard"><p className="eyebrow">YOUR GROUPS</p><h1>Shared plans.<br/><em>One place.</em></h1>{owner===userId && error && <p role="alert">{error} <button onClick={()=>setAttempt(n=>n+1)}>Retry</button></p>}{owner===userId && groups ? <div className="group-list">{groups.length ? groups.map(g=><a className="group-card" href={`/s/${g.id}`} key={g.id}><h2>{g.name}</h2><p>{g.currency} · Settled up{g.archived?' · Archived':''}</p></a>):<p>No groups yet. Start with a friend, a trip, or your household.</p>}</div>:<p>Loading your groups…</p>}<form className="group-form" onSubmit={create}><h2>Create a group</h2><label>Group name<input required maxLength={100} value={name} onChange={e=>{setName(e.target.value);setKey(crypto.randomUUID());}} placeholder="Weekend in New York"/></label><label>Currency<select value={currency} onChange={e=>{setCurrency(e.target.value);setKey(crypto.randomUUID());}}>{currencies.map(c=><option key={c}>{c}</option>)}</select></label><p className="small">One currency for the group. It becomes fixed after the first expense or repayment.</p><button disabled={busy} className="button">{busy?'Creating…':'Create group'}</button></form></section>;
 }
 function MemberControls({group}:{group:Group}) {
   const {isSignedIn,userId} = useAuth();
@@ -66,6 +69,7 @@ export function InvitationPage({token}:{token:string}) {
 export function GroupSettings({id}:{id:string}) {
   const {isLoaded,isSignedIn,userId}=useAuth();
   const api=useApi();
+  const currentUser=useRef(userId); currentUser.current=userId;
   const [invites,setInvites]=useState<Invitation[]>();
   const [owner,setOwner]=useState<string|null|undefined>();
   const [email,setEmail]=useState('');
@@ -73,11 +77,11 @@ export function GroupSettings({id}:{id:string}) {
   const [link,setLink]=useState('');
   const [busy,setBusy]=useState(false);
   const [key,setKey]=useState(()=>crypto.randomUUID());
-  async function reload(){const d=await api(`/api/groups/${id}/settings`);setInvites(d.invites);}
-  useEffect(()=>{let active=true;setOwner(userId);setInvites(undefined);setLink('');setError('');if(isSignedIn)api(`/api/groups/${id}/settings`).then(d=>{if(active)setInvites(d.invites);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[isSignedIn,userId,id]);
-  async function invite(e:FormEvent){e.preventDefault();setBusy(true);setError('');setLink('');try{const d=await api(`/api/groups/${id}/invites`,{email},key);if(d.link)setLink(d.link);else setError('This invitation was already created. Its link is only shown once; create a replacement to get a new link.');setKey(crypto.randomUUID());await reload();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
-  async function revoke(inviteId:string){setBusy(true);setError('');try{await api(`/api/groups/${id}/invites/${inviteId}/revoke`,{});await reload();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function reload(account:typeof userId){if(currentUser.current!==account)return;const d=await api(`/api/groups/${id}/settings`);if(currentUser.current===account)setInvites(d.invites);}
+  useEffect(()=>{let active=true;setOwner(userId);setBusy(false);setInvites(undefined);setEmail('');setLink('');setError('');if(isSignedIn)api(`/api/groups/${id}/settings`).then(d=>{if(active)setInvites(d.invites);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[isSignedIn,userId,id]);
+  async function invite(e:FormEvent){e.preventDefault();const account=userId;setBusy(true);setError('');setLink('');try{const d=await api(`/api/groups/${id}/invites`,{email},key);if(currentUser.current!==account)return;if(d.link)setLink(d.link);else setError('This invitation was already created. Its link is only shown once; create a replacement to get a new link.');setKey(crypto.randomUUID());await reload(account);}catch(e){if(currentUser.current===account)setError((e as Error).message);}finally{if(currentUser.current===account)setBusy(false);}}
+  async function revoke(inviteId:string){const account=userId;setBusy(true);setError('');try{await api(`/api/groups/${id}/invites/${inviteId}/revoke`,{});await reload(account);}catch(e){if(currentUser.current===account)setError((e as Error).message);}finally{if(currentUser.current===account)setBusy(false);}}
   if(!isLoaded)return <p>Loading…</p>;
   if(!isSignedIn)return <section className="dashboard"><h1>Group settings</h1><SignIn/></section>;
-  return <section className="dashboard"><a href={`/s/${id}`}>← Back to group</a><h1>Invitations</h1>{error&&<p role="alert">{error}</p>}{owner===userId&&invites&&<><form className="group-form" onSubmit={invite}><label>Member’s email<input type="email" required maxLength={254} value={email} onChange={e=>{setEmail(e.target.value);setKey(crypto.randomUUID());}}/></label><p className="small">Share the generated link yourself. It expires in 7 days and only this verified email can accept. Creating another invitation for the same email replaces the previous one.</p><button disabled={busy} className="button">{busy?'Saving…':'Create invitation'}</button></form>{link&&<div className="group-card"><p>Save and share this invitation now. Its link is only shown once.</p><CopyLink value={link} label="Copy invitation link"/></div>}<ul className="invite-list">{invites.map(i=><li key={i.id}><span>{i.email}<small>{i.accepted?'Accepted':i.revoked?'Revoked':i.expires_at*1000<Date.now()?'Expired':`Expires ${new Date(i.expires_at*1000).toLocaleDateString()}`}</small></span>{!i.accepted&&!i.revoked&&<button disabled={busy} onClick={()=>revoke(i.id)}>Revoke</button>}</li>)}</ul></>}</section>;
+  return <section className="dashboard"><a href={`/s/${id}`}>← Back to group</a><h1>Invitations</h1>{owner===userId&&error&&<p role="alert">{error}</p>}{owner===userId&&invites&&<><form className="group-form" onSubmit={invite}><label>Member’s email<input type="email" required maxLength={254} value={email} onChange={e=>{setEmail(e.target.value);setKey(crypto.randomUUID());}}/></label><p className="small">Share the generated link yourself. It expires in 7 days and only this verified email can accept. Creating another invitation for the same email replaces the previous one.</p><button disabled={busy} className="button">{busy?'Saving…':'Create invitation'}</button></form>{link&&<div className="group-card"><p>Save and share this invitation now. Its link is only shown once.</p><CopyLink value={link} label="Copy invitation link"/></div>}<ul className="invite-list">{invites.map(i=><li key={i.id}><span>{i.email}<small>{i.accepted?'Accepted':i.revoked?'Revoked':i.expires_at*1000<Date.now()?'Expired':`Expires ${new Date(i.expires_at*1000).toLocaleDateString()}`}</small></span>{!i.accepted&&!i.revoked&&<button disabled={busy} onClick={()=>revoke(i.id)}>Revoke</button>}</li>)}</ul></>}</section>;
 }
