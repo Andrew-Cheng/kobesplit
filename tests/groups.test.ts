@@ -1,8 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import worker from '../worker';
+import { http, HttpResponse } from 'msw';
 import { groupsApi, hash } from '../worker/groups';
 import { authenticatedUser } from '../worker/auth';
-import { startClerkFixture, stopClerkFixture, mockClerkUser, uniqueClerkUser, sessionToken } from './clerk-fixture';
+import { network, startClerkFixture, stopClerkFixture, mockClerkUser, uniqueClerkUser, sessionToken } from './clerk-fixture';
 
 let user: {id:string;display_name:string};
 let email:string;
@@ -20,6 +22,17 @@ async function create(){const r=await call('/groups',{name:'Weekend',currency:'U
 async function invite(id:string){const response=await call(`/groups/${id}/invites`,{email});expect(response?.status).toBe(201);return await response!.json() as {id:string;link:string};}
 
 describe('groups and invitations with real D1 transactions',()=>{
+  it.each([[429,'clerk_rate_limit'],[500,'clerk_profile']] as const)('preserves categorized auth failures for group requests on Clerk HTTP %s',async(status,category)=>{
+    network.use(http.get(`https://api.clerk.com/v1/users/${clerkId}`,()=>HttpResponse.json({errors:[{code:'fixture_error',message:'private upstream details'}]},{status,headers:{'Retry-After':'17'}})));
+    const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+    const response=await worker.fetch(new Request('https://example.com/api/groups',{headers:{Authorization:`Bearer ${token}`}}),env);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Retry-After')).toBe(status===429?'17':null);
+    expect(await response.text()).not.toContain('private upstream details');
+    expect(log.mock.calls).toEqual([[{event:'group_request_failed',category}]]);
+  });
+
   it('atomically creates membership and audit, safely replays creation, and rejects key reuse',async()=>{
     const key=crypto.randomUUID();
     const r=await call('/groups',{name:'Dinner',currency:'USD'},key);const first=await r!.json() as {id:string};

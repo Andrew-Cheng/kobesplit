@@ -4,6 +4,7 @@ import { ClerkProvider, Show, UserButton } from '@clerk/react';
 import { SignIn } from './session';
 import { GroupsDashboard, PublicGroup, InvitationPage, GroupSettings } from './groups';
 import './style.css';
+import { isDashboardPath } from '../shared/navigation';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const configured = Boolean(publishableKey);
@@ -29,7 +30,7 @@ function App() {
   const path = window.location.pathname;
   const group = path.match(/^\/s\/([a-f0-9-]{36})(\/settings)?$/);
   const invite = path.match(/^\/invite\/([a-f0-9]{64})$/);
-  const protectedPage = path === '/dashboard' || invite || group?.[2];
+  const protectedPage = isDashboardPath(path) || invite || group?.[2];
   const content = group && !group[2] ? <PublicGroup id={group[1]} configured={configured}/> : protectedPage ? !configured ? <p role="status">Sign-in is temporarily unavailable.</p> : invite ? <InvitationPage token={invite[1]}/> : group ? <GroupSettings id={group[1]}/> : <GroupsDashboard/> : null;
   return <div className="page"><Header/>{content ? <main className="dashboard-main">{content}</main> : <Landing/>}<footer><span>For the things you share.</span><span>KobeSplit records payments. It doesn't move money.</span></footer></div>;
 }

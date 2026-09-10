@@ -14,7 +14,8 @@
       "/api/*",
       "/s/*",
       "/invite/*",
-      "/dashboard"
+      "/dashboard",
+      "/dashboard/*"
     ]
   },
   "d1_databases": [

@@ -44,7 +44,7 @@ Wrangler declares the two server key names in `secrets.required`; generated type
 
 Enable Google and email verification codes in the Clerk development instance. Disable password requirements for passwordless sign-up. Names may be set through Clerk's profile controls; missing names display as "Member", never as an email address.
 
-React sends a Clerk Bearer session token to `GET /api/me`. The Worker verifies it with Clerk's backend SDK, checks the request origin, requires an active session and verified email, and atomically creates or updates the user's name using their unique Clerk ID. Concurrent requests preserve the same internal user ID. The response includes only that internal ID and display name and is never cached. Group permissions are a separate check to be added with groups; authentication alone will not grant group access.
+React sends a Clerk Bearer session token to `GET /api/me`. The Worker verifies it with Clerk's backend SDK, checks the request origin, requires an active session and verified email, and atomically creates or updates the user's name using their unique Clerk ID. Concurrent requests preserve the same internal user ID. Unchanged display names do not update D1; a conditional upsert followed by a read handles that case. Names are capped at 100 Unicode code points without splitting surrogate pairs. The response includes only that internal ID and display name and is never cached. Group permissions are a separate check to be added with groups; authentication alone will not grant group access.
 
 Sign-in and sign-up return to the group or invitation path the visitor opened, or `/dashboard` when starting from the landing page. Return paths are restricted to application routes. The dashboard is an account confirmation screen until groups are implemented.
 
@@ -81,3 +81,9 @@ The creator can open **Manage invitations**, enter a recipient’s email, and co
 Invitation links are displayed only once; the database stores a SHA-256 hash. Retrying a successful submission returns the existing invitation ID without making a duplicate. If the first response was lost, the interface explains how to create a replacement and get a usable link. No raw invitation token is persisted in audit or retry records. Writes require an idempotency key (acceptance is inherently one-time), have a per-account limit of 30 per minute, and use D1 transactions with in-transaction permission guards.
 
 This feature adds group membership and an empty public ledger. Expenses, repayments, nonzero balances, group renaming/archiving controls, and member removal controls follow in their own PRs. Schema fields and backend guards already enforce read-only archived groups and removed membership if those states exist.
+
+## Authentication dependency tradeoff
+
+Each protected request currently reads the live Clerk profile to check account status and verified emails. This deliberately remains uncached so invitation verification and account checks do not use stale profile data. It consumes Backend API quota; before higher traffic, evaluate signed session claims or webhook-based profile synchronization with explicit freshness/revocation rules. Clerk throttling returns a retryable 503 with the provider's Retry-After delay (10 seconds if absent). Logs distinguish token verification, Clerk profile, Clerk throttling, database, and unexpected failures using fixed categories only.
+
+Both `/dashboard` and `/dashboard/` route through the Worker and render the account page with no-store and noindex headers.

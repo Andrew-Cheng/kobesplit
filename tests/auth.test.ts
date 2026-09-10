@@ -1,7 +1,9 @@
 import { env, exports } from 'cloudflare:workers';
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { mockClerkUser, sessionToken, startClerkFixture, stopClerkFixture, uniqueClerkUser } from './clerk-fixture';
-import { signInDestination } from '../shared/navigation';
+import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
+import { network, mockClerkUser, sessionToken, startClerkFixture, stopClerkFixture, uniqueClerkUser } from './clerk-fixture';
+import worker from '../worker';
+import { http, HttpResponse } from 'msw';
+import { isDashboardPath, signInDestination } from '../shared/navigation';
 
 beforeAll(startClerkFixture);
 afterAll(stopClerkFixture);
@@ -63,6 +65,51 @@ describe('Clerk session boundary and D1 mapping', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ user: { id: expect.any(String), display_name: 'Member' } });
   });
+  it('does not update unchanged names, but keeps the ID when a name changes', async () => {
+    const sub = uniqueClerkUser(); mockClerkUser(sub);
+    const token = await sessionToken(sub);
+    const original = await (await requestMe(token)).json();
+    const trigger = `no_unchanged_${sub}`;
+    await env.DB.exec(`CREATE TRIGGER ${trigger} BEFORE UPDATE ON users WHEN OLD.clerk_id='${sub}' AND OLD.display_name=NEW.display_name BEGIN SELECT RAISE(ABORT, 'Unchanged profile was written'); END;`);
+    try {
+      const response = await requestMe(token);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(original);
+      mockClerkUser(sub, { firstName: 'Updated' });
+      const updated = await requestMe(token);
+      expect(updated.status).toBe(200);
+      expect(await updated.json()).toEqual({ user: { ...(original as {user: object}).user, display_name: 'Updated Rivera' } });
+    } finally { await env.DB.exec(`DROP TRIGGER ${trigger}`); }
+  });
+  it('preserves an astral character at the display-name boundary', async () => {
+    const sub = uniqueClerkUser();
+    const name = 'a'.repeat(99) + '😀' + 'z';
+    mockClerkUser(sub, { firstName: name, lastName: null });
+    const response = await requestMe(await sessionToken(sub));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ user: { id: expect.any(String), display_name: 'a'.repeat(99) + '😀' } });
+  });
+  it.each([[429, 'clerk_rate_limit'], [500, 'clerk_profile']] as const)('categorizes Clerk HTTP %s without exposing error details', async (status, category) => {
+    const sub = uniqueClerkUser();
+    network.use(http.get(`https://api.clerk.com/v1/users/${sub}`, () => HttpResponse.json({ errors: [{ code: 'fixture_error', message: 'private upstream details' }] }, { status, headers: { 'Retry-After': '17' } })));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const response = await requestMe(await sessionToken(sub));
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Retry-After')).toBe(status === 429 ? '17' : null);
+    expect(await response.text()).not.toContain('private upstream details');
+    expect(log.mock.calls).toEqual([[{ event: 'authentication_failed', route: '/api/me', category }]]);
+  });
+  it('categorizes D1 failures separately without logging database details', async () => {
+    const sub = uniqueClerkUser(); mockClerkUser(sub);
+    const token = await sessionToken(sub);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(env.DB, 'prepare').mockImplementation(() => { throw new Error('private database details'); });
+    const response = await worker.fetch(new Request('https://example.com/api/me', { headers: { Authorization: `Bearer ${token}` } }), env);
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('private database details');
+    expect(log.mock.calls).toEqual([[{ event: 'authentication_failed', route: '/api/me', category: 'database' }]]);
+  });
   it('rejects unsupported methods', async () => {
     const response = await exports.default.fetch('https://example.com/api/me', { method: 'POST' });
     expect(response.status).toBe(405); await response.text();
@@ -77,4 +124,9 @@ describe('sign-in return destination', () => {
 // Group settings preserve their destination through the same sign-in flow.
 it('returns to group settings after sign-in', () => {
   expect(signInDestination('/s/random-group/settings')).toBe('/s/random-group/settings');
+});
+
+describe('dashboard routing', () => {
+  it.each(['/dashboard', '/dashboard/', '/dashboard//'])('recognizes %s', path => expect(isDashboardPath(path)).toBe(true));
+  it.each(['/dashboard-other', '/dashboard/settings', '/'])('does not treat %s as the dashboard', path => expect(isDashboardPath(path)).toBe(false));
 });

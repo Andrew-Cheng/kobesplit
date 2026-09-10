@@ -1,5 +1,6 @@
 import { groupsApi } from './groups';
-import { authenticatedUser, AuthError } from './auth';
+import { isDashboardPath } from '../shared/navigation';
+import { authenticatedUser, AuthError, AuthDependencyError } from './auth';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -16,7 +17,10 @@ export default {
           if (result) { for (const [key,value] of Object.entries(headers)) result.headers.set(key,value); return result; }
         } catch (error) {
           if (error instanceof AuthError) return Response.json({error:error.message},{status:error.status,headers});
-          console.error({event:'group_request_failed'});
+          console.error({ event: 'group_request_failed', category: error instanceof AuthDependencyError ? error.category : 'unexpected' });
+          if (error instanceof AuthDependencyError && error.category === 'clerk_rate_limit') {
+            return Response.json({ error: 'Sign-in service is busy. Please try again shortly.' }, { status: 503, headers: { ...headers, 'Retry-After': String(error.retryAfter) } });
+          }
           return Response.json({error:'Unable to complete the request. Please try again.'},{status:503,headers});
         }
       }
@@ -26,7 +30,10 @@ export default {
           return Response.json({ user: await authenticatedUser(request, env) }, { headers });
         } catch (error) {
           if (error instanceof AuthError) return Response.json({ error: error.message }, { status: error.status, headers });
-          console.error({ event: 'authentication_failed', route: '/api/me' });
+          console.error({ event: 'authentication_failed', route: '/api/me', category: error instanceof AuthDependencyError ? error.category : 'unexpected' });
+          if (error instanceof AuthDependencyError && error.category === 'clerk_rate_limit') {
+            return Response.json({ error: 'Sign-in service is busy. Please try again shortly.' }, { status: 503, headers: { ...headers, 'Retry-After': String(error.retryAfter) } });
+          }
           return Response.json({ error: 'Unable to load your account. Please try again.' }, { status: 503, headers });
         }
       }
@@ -52,7 +59,7 @@ export default {
       const response = new Response(asset.body, asset);
       response.headers.set('Referrer-Policy', 'no-referrer');
       response.headers.set('X-Content-Type-Options', 'nosniff');
-      if (/^\/(s|invite)\//.test(pathname) || pathname === '/dashboard') {
+      if (/^\/(s|invite)\//.test(pathname) || isDashboardPath(pathname)) {
         response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
         response.headers.set('Cache-Control', 'no-store');
       }
