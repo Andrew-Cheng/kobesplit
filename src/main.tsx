@@ -27,7 +27,7 @@ function Landing() {
   </main>;
 }
 function App() {
-  const path = window.location.pathname;
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
   const group = path.match(/^\/s\/([a-f0-9-]{36})(\/settings)?$/);
   const invite = path.match(/^\/invite\/([a-f0-9]{64})$/);
   const protectedPage = isDashboardPath(path) || invite || group?.[2];
