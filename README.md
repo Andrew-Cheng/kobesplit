@@ -8,6 +8,7 @@ Requires Node.js 24 and npm.
 
 ```sh
 npm ci
+npm run db:migrate
 npm run dev
 ```
 
@@ -19,7 +20,7 @@ npm run build
 npm run types:check
 ```
 
-This foundation includes the mobile-first landing page, Workers API routing, local D1 binding, and CI. Authentication and financial features will arrive in separate PRs.
+The app includes the mobile-first landing page, Clerk sign-in/sign-out, an authenticated account page, Workers API routing, local D1, and CI. Groups and financial features will arrive in separate PRs.
 
 Tests use Cloudflare's Vitest plugin to run in `workerd`, with isolated local D1 and real built static assets. `npm test` builds the assets first and requires no cloud accounts or credentials. Vitest is on the plugin-supported 4.1 release line.
 
@@ -35,9 +36,21 @@ Workers Logs are enabled for structured application errors. Error handlers log f
 
 ## Credentials
 
-Authentication will use `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` and `CLERK_SECRET_KEY` in `.dev.vars`. Create these files locally; all `.env*` and `.dev.vars*` files are ignored by Git. Only the publishable key may appear in frontend code.
+Set `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local`. Set both `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` in `.dev.vars`; the latter is the same publishable key used by React. Create these files locally; all `.env*` and `.dev.vars*` files are ignored by Git. Only the publishable key may appear in frontend code.
 
-The foundation declares `secrets.required: []`, so existing local secrets are not exposed as Worker bindings or included in generated types. The authentication PR will add the required Clerk secret name to this list. Set production values through Cloudflare's secret management; never add values to Wrangler configuration.
+Wrangler declares the two server key names in `secrets.required`; generated types contain their names, never their values. Set production values through Cloudflare's secret management; never add values to Wrangler configuration. Builds and runtime tests work without real credentials: tests override these bindings with fixtures, and an unconfigured frontend displays a sign-in unavailable message.
+
+## Authentication
+
+Enable Google and email verification codes in the Clerk development instance. Disable password requirements for passwordless sign-up. Names may be set through Clerk's profile controls; missing names display as "Member", never as an email address.
+
+React sends a Clerk Bearer session token to `GET /api/me`. The Worker verifies it with Clerk's backend SDK, checks the request origin, requires an active session and verified email, and atomically creates or updates the user's name using their unique Clerk ID. Concurrent requests preserve the same internal user ID. Unchanged display names do not update D1; a conditional upsert followed by a read handles that case. Names are capped at 100 Unicode code points without splitting surrogate pairs. The response includes only that internal ID and display name and is never cached. Group permissions are a separate check to be added with groups; authentication alone will not grant group access.
+
+Sign-in and sign-up return to the group or invitation path the visitor opened, or `/dashboard` when starting from the landing page. Return paths are restricted to application routes. The dashboard is an account confirmation screen until groups are implemented.
+
+Runtime authentication tests use generated RSA signatures with Clerk's actual verifier and mock only Clerk HTTP calls via MSW. Cases include expired/forged tokens, wrong origins, pending sessions, unverified emails, banned accounts, concurrent mapping, and response privacy. Test-mode fetch interception and fixture credentials prevent calls to the live Clerk application.
+
+Manual verification before merging: sign in with Google and with an email code, confirm the account page loads, sign out, and repeat from a group/invitation URL to check the return location. These are real-provider browser checks and are not replaced by fixture tests.
 
 ## Deployment (not configured yet)
 
@@ -58,3 +71,9 @@ Planned PRs: foundation; authentication; groups and invitations; expenses and pa
 ## Dependency note
 
 `sharp` is overridden to a patched release to address a transitive security advisory in the local Cloudflare tooling. Revisit the override when Miniflare updates its dependency.
+
+## Authentication dependency tradeoff
+
+Each protected request currently reads the live Clerk profile to check account status and verified emails. This deliberately remains uncached so invitation verification and account checks do not use stale profile data. It consumes Backend API quota; before higher traffic, evaluate signed session claims or webhook-based profile synchronization with explicit freshness/revocation rules. Clerk throttling returns a retryable 503 with the provider's Retry-After delay (10 seconds if absent). Logs distinguish token verification, Clerk profile, Clerk throttling, database, and unexpected failures using fixed categories only.
+
+Both `/dashboard` and `/dashboard/` route through the Worker and render the account page with no-store and noindex headers.

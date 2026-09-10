@@ -14,16 +14,20 @@
     "types:check": "wrangler types --check"
   },
   "dependencies": {
+    "@clerk/backend": "^3.17.1",
+    "@clerk/react": "^6.15.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.6",
     "@cloudflare/vitest-plugin": "^1.1.6",
+    "@msw/cloudflare": "^0.0.1",
     "@types/node": "^26.5.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "msw": "^2.15.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.0",
