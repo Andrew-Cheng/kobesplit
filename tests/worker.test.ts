@@ -28,7 +28,7 @@ describe('Worker in the Cloudflare runtime', () => {
     await response.text();
   });
 
-  it.each(['/s/random-group', '/invite/random-token'])('serves built SPA assets with privacy headers at %s', async path => {
+  it.each(['/s/random-group', '/invite/random-token', '/dashboard', '/dashboard/'])('serves built SPA assets with privacy headers at %s', async path => {
     const response = await fetchWorker(path, { headers: { 'Sec-Fetch-Mode': 'navigate' } });
     expect(response.status).toBe(200);
     expect(response.headers.get('X-Robots-Tag')).toContain('noindex');

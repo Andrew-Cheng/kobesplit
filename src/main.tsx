@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ClerkProvider, Show, UserButton } from '@clerk/react';
 import { Dashboard, SignIn } from './session';
 import './style.css';
+import { isDashboardPath } from '../shared/navigation';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const configured = Boolean(publishableKey);
@@ -25,7 +26,7 @@ function Landing() {
   </main>;
 }
 function App() {
-  const dashboard = window.location.pathname === '/dashboard';
+  const dashboard = isDashboardPath(window.location.pathname);
   return <div className="page"><Header/>{dashboard ? <main className="dashboard-main">{configured ? <Dashboard/> : <p role="status">Sign-in is temporarily unavailable.</p>}</main> : <Landing/>}<footer><span>For the things you share.</span><span>KobeSplit records payments. It doesn't move money.</span></footer></div>;
 }
 function AuthenticationProvider({ children }: { children: ReactNode }) {
