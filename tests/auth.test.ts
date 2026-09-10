@@ -121,6 +121,11 @@ describe('sign-in return destination', () => {
   it.each(['/', '/dashboard', '//attacker.test', '/\\attacker.test', 'https://attacker.test', '/?redirect_url=https://attacker.test'])('uses dashboard for %s', path => expect(signInDestination(path)).toBe('/dashboard'));
 });
 
+// Group settings preserve their destination through the same sign-in flow.
+it('returns to group settings after sign-in', () => {
+  expect(signInDestination('/s/random-group/settings')).toBe('/s/random-group/settings');
+});
+
 describe('dashboard routing', () => {
   it.each(['/dashboard', '/dashboard/', '/dashboard//'])('recognizes %s', path => expect(isDashboardPath(path)).toBe(true));
   it.each(['/dashboard-other', '/dashboard/settings', '/'])('does not treat %s as the dashboard', path => expect(isDashboardPath(path)).toBe(false));
